@@ -1,0 +1,137 @@
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: FakeInvestment
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 1234
+      PG-DATA: /data/postgres
+    volumes:
+      - ./postgres-data:/data/postgres
+    networks:
+      - app-network
+    command: ["postgres", "-c", "wal_level=logical"]
+
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_KRAFT_MODE: true
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+    volumes:
+      - ./kafka-data:/data/kafka
+    networks:
+      - app-network
+
+
+  debezium:
+    image: debezium/connect:latest
+    container_name: debezium
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: debezium_connect_config
+      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_connect_status
+    ports:
+      - "8083:8083"
+    networks:
+      - app-network
+    depends_on:
+      - kafka
+      - postgres
+
+
+  debezium-ui:
+    image: debezium/debezium-ui:latest
+    container_name: debezium-ui
+    ports:
+      - "8084:8080"
+    environment:
+      - KAFKA_CONNECT_URIS=http://debezium:8083
+    networks:
+      - app-network
+    depends_on:
+      - debezium
+
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:latest
+    container_name: schema-registry
+    hostname: schema-registry
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    ports:
+      - "8081:8081"
+    networks:
+      - app-network
+    depends_on:
+      - kafka
+
+
+  curl-service:
+    image: curlimages/curl:latest
+    container_name: curl-service
+    environment:
+      DEBEZIUM_CONFIG: |
+        {
+          "name": "postgres-connector",
+          "config": {
+            "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+            "plugin.name": "pgoutput",
+            "connector.displayName": "PostgreSQL",
+            "topic.prefix": "pg-changes",
+            "database.hostname": "postgres",
+            "database.port": "5432",
+            "database.user": "admin",
+            "database.password": "1234",
+            "database.dbname": "FakeInvestment",
+            "database.server.name": "postgres",
+            "table.include.list": "public.transactions"
+          }
+        }
+    command: >
+      sh -c "
+        sleep 10;
+        echo Waiting for Kafka Connect to start listening on localhost:8083...;
+        while ! nc -z debezium 8083;
+        do
+          sleep 1;
+        done;
+        echo Kafka Connect is up!;
+        echo $$DEBEZIUM_CONFIG > debezium.json
+        curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" debezium:8083/connectors/ --data "@debezium.json"
+        echo "Curl command executed"
+      tail -f /dev/null
+      "
+    networks:
+      - app-network
+    depends_on:
+      - debezium
+
+volumes:
+  kafka-dats:
+  postgres-data:
+
+networks:
+  app-network:
+    driver: bridge
