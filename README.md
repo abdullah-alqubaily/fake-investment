@@ -49,7 +49,7 @@ This project simulates a stock market environment with quote generation, automat
    git clone https://github.com/abdullah-alqubaily/fake-investment.git
 2. Open the Project in Intellij and make sure you configure jdk 22
    
-3. Build and run the docker compose file (note change the ports if its already takes by anothor container or anothor instance of the same program).
+3. Build and run the docker compose file (note change the ports if its already taken by anothor container or anothor instance of the same program).
    
    ```bash
    docker compose up --build
