@@ -44,12 +44,18 @@ This project simulates a stock market environment with quote generation, automat
 ## Setup and Deployment
 
 1. Clone the repository
+   
    ```bash
    git clone https://github.com/abdullah-alqubaily/fake-investment.git
-3. Open the Project in Intellij
-4. Build and run the docker compose file.
+2. Open the Project in Intellij
+   
+3. Build and run the docker compose file.
+   
    ```bash
    docker compose up --build
+
+4. Run the app in Intellij
+
 
 ## API Documentation
 
