@@ -13,6 +13,4 @@ public class KafkaTopicConfig {
      */
     @Bean
     public NewTopic quotesTopic() { return TopicBuilder.name("stock-quotes").build(); }
-    @Bean
-    public NewTopic auditTopic() { return TopicBuilder.name("audit-department").build(); }
 }

@@ -14,14 +14,19 @@ import java.util.logging.Logger;
 
 @Service
 public class TransactionService {
+
     private final TraderRepository traderRepository;
     private final TransactionRepository transactionRepository;
     private static final Logger logger = Logger.getLogger(TransactionService.class.getName());
 
-    public TransactionService(TraderRepository traderRepository, TransactionRepository transactionRepository) {
+    public TransactionService(
+            TraderRepository traderRepository,
+            TransactionRepository transactionRepository
+    ) {
         this.traderRepository = traderRepository;
         this.transactionRepository = transactionRepository;
     }
+
 
     @Transactional
     public void buy(Trader trader, Quote quote) {
@@ -30,7 +35,6 @@ public class TransactionService {
 
         if (trader.getBalance() >= cost) {
             trader.setBalance(trader.getBalance() - cost);
-            traderRepository.save(trader);
 
             saveTraderAndRecordTransaction(
                     trader,
@@ -38,6 +42,7 @@ public class TransactionService {
                     quantity,
                     Transaction.TransactionType.BUY
             );
+
             logger.info("Buy Transaction built successfully");
         }
     }
@@ -50,27 +55,15 @@ public class TransactionService {
         if (hasShares(trader, quote.getSymbol())) {
             trader.setBalance(trader.getBalance() + revenue);
 
-
-            double costBasis = getCostBasis(trader, quote.getSymbol());
-            double profit = revenue - (costBasis * quantity);
-            trader.updateTotalProfit(profit);
-
             saveTraderAndRecordTransaction(
                     trader,
                     quote,
                     quantity,
                     Transaction.TransactionType.SELL
             );
+
             logger.info("Sell Transaction built successfully");
         }
-    }
-
-    private double getCostBasis(Trader trader, String symbol) {
-        return transactionRepository.findByTraderAndSymbol(trader, symbol)
-                .stream()
-                .mapToDouble(Transaction::getPrice)
-                .average()
-                .orElse(0.0);
     }
 
     private boolean hasShares(Trader trader, String symbol) {
@@ -97,4 +90,5 @@ public class TransactionService {
         transaction.setType(type);
         transactionRepository.save(transaction);
     }
+
 }

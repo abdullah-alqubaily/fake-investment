@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
+
 @Service
 public class QuoteService {
 
@@ -30,7 +31,7 @@ public class QuoteService {
     /**
      * This method generates quotes every 5 seconds and send them to stock-quote topic.
      */
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRate = 1000)
     public void generateQuotes() {
         for (String company : companies) {
             Quote quote = new Quote();

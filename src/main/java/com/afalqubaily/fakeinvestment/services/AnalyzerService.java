@@ -2,10 +2,10 @@ package com.afalqubaily.fakeinvestment.services;
 
 import com.afalqubaily.fakeinvestment.models.Trader;
 import com.afalqubaily.fakeinvestment.models.Transaction;
-import com.afalqubaily.fakeinvestment.repositories.TraderRepository;
 import com.afalqubaily.fakeinvestment.repositories.TransactionRepository;
 import org.springframework.stereotype.Service;
 
+import java.text.DecimalFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,53 +14,92 @@ import java.util.stream.Collectors;
 @Service
 public class AnalyzerService {
 
-    private final TraderRepository traderRepository;
     private final TransactionRepository transactionRepository;
 
-    public AnalyzerService(TraderRepository traderRepository, TransactionRepository transactionRepository) {
-        this.traderRepository = traderRepository;
+    public AnalyzerService(TransactionRepository transactionRepository) {
         this.transactionRepository = transactionRepository;
     }
 
-    public List<Map<String, Object>> getTraderPerformance() {
-        List<Trader> traders = traderRepository.findAll();
-        return traders.stream()
-                .map(trader -> {
-                    Map<String, Object> performance = new HashMap<>();
-                    double totalValue = trader.getBalance() + trader.getTotalProfit();
-                    int totalTrades = calculateTotalTrades(trader);
-                    double averageProfitPerTrade = calculateAverageProfitPerTrade(trader);
-                    double profitPercentage = calculateProfitPercentage(trader);
+    public Map<String, Object> analyzeTrader(Trader trader) {
+        List<Transaction> transactions = transactionRepository.findByTrader(trader);
 
-                    performance.put("name", trader.getName());
-                    performance.put("totalProfit", trader.getTotalProfit());
-                    performance.put("balance", trader.getBalance());
-                    performance.put("totalValue", totalValue);
-                    performance.put("profitPercentage", profitPercentage);
-                    performance.put("averageProfitPerTrade", averageProfitPerTrade);
-                    performance.put("totalTrades", totalTrades);
-                    return performance;
-                })
-                .sorted((a, b) -> Double.compare((Double) b.get("totalValue"), (Double) a.get("totalValue")))
-                .collect(Collectors.toList());
+        Map<String, List<Transaction>> transactionsBySymbol = transactions.stream()
+                .collect(Collectors.groupingBy(Transaction::getSymbol));
+
+        double totalProfit = 0;
+        int completedTrades = 0;
+        int totalTransactions = transactions.size();
+
+        for (List<Transaction> symbolTransactions : transactionsBySymbol.values()) {
+            totalProfit += calculateProfitForSymbol(symbolTransactions);
+            completedTrades += countCompletedTrades(symbolTransactions);
+        }
+
+        double totalInvested = calculateTotalInvested(transactions);
+        double totalProfitPercentage = (totalProfit / totalInvested) * 100;
+        double averageProfitPerTrade = completedTrades > 0 ? totalProfit / completedTrades : 0;
+
+        Map<String, Object> analysis = new HashMap<>();
+        analysis.put("traderName", trader.getName());
+        analysis.put("totalProfitPercentage", formatPercentage(totalProfitPercentage));
+        analysis.put("averageProfitPerTrade", formatCurrency(averageProfitPerTrade));
+        analysis.put("completedTrades", completedTrades);
+        analysis.put("totalTransactions", totalTransactions);
+        analysis.put("totalProfit", formatCurrency(totalProfit));
+
+        return analysis;
     }
 
+    private double calculateProfitForSymbol(List<Transaction> transactions) {
+        double totalBuyCost = 0;
+        int totalBuyQuantity = 0;
+        double totalSellRevenue = 0;
+        int totalSellQuantity = 0;
 
-    private int calculateTotalTrades(Trader trader) {
-        return transactionRepository.countByTrader(trader);
+        for (Transaction t : transactions) {
+            if (t.getType() == Transaction.TransactionType.BUY) {
+                totalBuyCost += t.getPrice() * t.getQuantity();
+                totalBuyQuantity += t.getQuantity();
+            } else {
+                totalSellRevenue += t.getPrice() * t.getQuantity();
+                totalSellQuantity += t.getQuantity();
+            }
+        }
+
+        int closedQuantity = Math.min(totalBuyQuantity, totalSellQuantity);
+        double avgBuyPrice = totalBuyQuantity > 0 ? totalBuyCost / totalBuyQuantity : 0;
+        double avgSellPrice = totalSellQuantity > 0 ? totalSellRevenue / totalSellQuantity : 0;
+
+        return (avgSellPrice - avgBuyPrice) * closedQuantity;
     }
 
-    private double calculateAverageProfitPerTrade(Trader trader) {
-        int totalTrades = calculateTotalTrades(trader);
-        return totalTrades > 0 ? trader.getTotalProfit() / totalTrades : 0;
+    private int countCompletedTrades(List<Transaction> transactions) {
+        int buyQuantity = 0;
+        int sellQuantity = 0;
+        for (Transaction t : transactions) {
+            if (t.getType() == Transaction.TransactionType.BUY) {
+                buyQuantity += t.getQuantity();
+            } else {
+                sellQuantity += t.getQuantity();
+            }
+        }
+        return Math.min(buyQuantity, sellQuantity);
     }
 
-    private double calculateProfitPercentage(Trader trader) {
-        List<Transaction> buyTransactions = transactionRepository.findByTraderAndType(trader, Transaction.TransactionType.BUY);
-        double totalInvestment = buyTransactions.stream()
+    private double calculateTotalInvested(List<Transaction> transactions) {
+        return transactions.stream()
+                .filter(t -> t.getType() == Transaction.TransactionType.BUY)
                 .mapToDouble(t -> t.getPrice() * t.getQuantity())
                 .sum();
+    }
 
-        return totalInvestment > 0 ? (trader.getTotalProfit() / totalInvestment) * 100 : 0;
+    private String formatPercentage(double value) {
+        DecimalFormat df = new DecimalFormat("0.00");
+        return df.format(value) + "%";
+    }
+
+    private String formatCurrency(double value) {
+        DecimalFormat df = new DecimalFormat("0.00");
+        return "$" + df.format(value);
     }
 }

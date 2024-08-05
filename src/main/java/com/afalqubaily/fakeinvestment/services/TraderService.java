@@ -10,12 +10,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
+
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Logger;
 
 @Service
@@ -23,11 +23,13 @@ public class TraderService {
 
     private final TraderRepository traderRepository;
     private final TransactionService transactionService;
-    private final Map<Long, Double> lastPrices = new HashMap<>();
     private static final Logger logger = Logger.getLogger(TraderService.class.getName());
     private final TransactionRepository transactionRepository;
 
-    public TraderService(TraderRepository traderRepository, TransactionService transactionService, TransactionRepository transactionRepository) {
+    public TraderService(
+            TraderRepository traderRepository,
+            @Lazy TransactionService transactionService,
+            TransactionRepository transactionRepository) {
         this.traderRepository = traderRepository;
         this.transactionService = transactionService;
         this.transactionRepository = transactionRepository;
@@ -36,11 +38,9 @@ public class TraderService {
     @PostConstruct
     public void initializeTraders() {
         if (traderRepository.count() == 0) {
-            traderRepository.save(new Trader("Value Investor", 10000.0));
-            traderRepository.save(new Trader("Momentum Trader", 10000.0));
-            traderRepository.save(new Trader("Contrarian", 10000.0));
-            traderRepository.save(new Trader("Mean Reversion Trader", 10000.0));
-            traderRepository.save(new Trader("Technical Analyst", 10000.0));
+            traderRepository.save(new Trader("Value Investor", 100000.0));
+            traderRepository.save(new Trader("Mean Reversion Trader", 100000.0));
+            traderRepository.save(new Trader("Technical Analyst", 100000.0));
         }
     }
 
@@ -60,19 +60,12 @@ public class TraderService {
                 logger.info("Selling trader " + trader.getName() + trader.getBalance());
                 transactionService.sell(trader, quote);
             }
-            lastPrices.put(trader.getId(), quote.getPrice());
         }
     }
 
     private boolean shouldSell(Trader trader, Quote quote) {
         switch (trader.getName()) {
             case "Value Investor" -> { return quote.getPrice() > 150; }
-            case "Momentum Trader" -> {
-                return quote.getPrice() < (lastPrices.getOrDefault(trader.getId(), Double.MAX_VALUE) * 0.95);
-            }
-            case "Contrarian" -> {
-                return quote.getPrice() < (lastPrices.getOrDefault(trader.getId(), 0.0) * 1.05);
-            }
             case "Mean Reversion Trader" -> { return quote.getPrice() > 130; }
             case "Technical Analyst" -> { return quote.getPrice() < getSimpleMovingAverage(quote.getSymbol()); }
             case null, default -> { return false; }
@@ -82,12 +75,6 @@ public class TraderService {
     private boolean shouldBuy(Trader trader, Quote quote) {
         switch (trader.getName()) {
             case "Value Investor" -> { return quote.getPrice() < 100; }
-            case "Momentum Trader" -> {
-                return quote.getPrice() > (lastPrices.getOrDefault(trader.getId(), 0.0) * 1.05);
-            }
-            case "Contrarian" -> {
-                return quote.getPrice() < (lastPrices.getOrDefault(trader.getId(), Double.MAX_VALUE) * 0.95);
-            }
             case "Mean Reversion Trader" -> { return quote.getPrice() < 120; }
             case "Technical Analyst" -> { return quote.getPrice() > getSimpleMovingAverage(quote.getSymbol()); }
             case null, default -> { return false; }
